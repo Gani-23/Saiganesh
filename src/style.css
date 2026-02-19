@@ -1082,6 +1082,8 @@ h3 {
 
 :root[data-theme='dark'] .side-rail__link {
   color: #93a0b3;
+  border-color: #4c6278;
+  background: rgba(24, 35, 47, 0.84);
 }
 
 :root[data-theme='dark'] .workspace,
@@ -1372,26 +1374,40 @@ h3 {
   }
 
   .side-rail {
-    position: static;
+    position: sticky;
+    top: 0.4rem;
+    z-index: 35;
     height: auto;
-    display: grid;
-    grid-template-columns: auto repeat(4, auto);
-    justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.66rem;
+    gap: 0.34rem;
+    padding: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .side-rail::-webkit-scrollbar {
+    display: none;
   }
 
   .side-rail__logo {
     margin: 0;
+    flex: 0 0 auto;
   }
 
   .side-rail__link {
+    flex: 0 0 auto;
     writing-mode: horizontal-tb;
     transform: none;
-    font-size: 0.64rem;
-    padding: 0.3rem 0.45rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    padding: 0.3rem 0.5rem;
     border: 1px solid #d8ccb1;
+    background: rgba(248, 242, 229, 0.8);
   }
 
   .timeline {
@@ -1406,27 +1422,27 @@ h3 {
 @media (max-width: 720px) {
   .shell {
     width: calc(100% - 1rem);
-    margin: 0.5rem auto;
-    gap: 0.6rem;
+    margin: 0.45rem auto;
+    gap: 0.52rem;
   }
 
   .side-rail {
-    display: flex;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    gap: 0.36rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    top: 0.35rem;
+    gap: 0.3rem;
+    padding: 0.42rem;
+    border-radius: 14px;
   }
 
-  .side-rail::-webkit-scrollbar {
-    display: none;
+  .side-rail__logo {
+    width: 40px;
+    height: 40px;
+    font-size: 1.02rem;
   }
 
-  .side-rail__logo,
   .side-rail__link {
-    flex: 0 0 auto;
+    font-size: 0.58rem;
+    letter-spacing: 0.11em;
+    padding: 0.24rem 0.38rem;
   }
 
   .workspace {
@@ -1529,20 +1545,20 @@ h3 {
 
 @media (max-width: 420px) {
   .side-rail {
-    padding: 0.56rem;
-    gap: 0.3rem;
+    padding: 0.38rem;
+    gap: 0.24rem;
   }
 
   .side-rail__logo {
-    width: 40px;
-    height: 40px;
-    font-size: 1.02rem;
+    width: 36px;
+    height: 36px;
+    font-size: 0.96rem;
   }
 
   .side-rail__link {
-    font-size: 0.58rem;
-    letter-spacing: 0.12em;
-    padding: 0.22rem 0.3rem;
+    font-size: 0.54rem;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.3rem;
   }
 
   .chip {
