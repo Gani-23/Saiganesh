@@ -1374,16 +1374,16 @@ h3 {
   .side-rail {
     position: static;
     height: auto;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: auto repeat(4, auto);
+    justify-content: space-between;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.4rem;
     padding: 0.66rem;
   }
 
   .side-rail__logo {
-    margin: 0 0.35rem 0 0;
+    margin: 0;
   }
 
   .side-rail__link {
@@ -1408,6 +1408,25 @@ h3 {
     width: calc(100% - 1rem);
     margin: 0.5rem auto;
     gap: 0.6rem;
+  }
+
+  .side-rail {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 0.36rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .side-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .side-rail__logo,
+  .side-rail__link {
+    flex: 0 0 auto;
   }
 
   .workspace {
@@ -1509,10 +1528,21 @@ h3 {
 }
 
 @media (max-width: 420px) {
+  .side-rail {
+    padding: 0.56rem;
+    gap: 0.3rem;
+  }
+
+  .side-rail__logo {
+    width: 40px;
+    height: 40px;
+    font-size: 1.02rem;
+  }
+
   .side-rail__link {
     font-size: 0.58rem;
     letter-spacing: 0.12em;
-    padding: 0.24rem 0.34rem;
+    padding: 0.22rem 0.3rem;
   }
 
   .chip {

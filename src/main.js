@@ -71,7 +71,7 @@ const render = () => {
       </aside>
 
       <main class="workspace">
-        <header class="workspace-header reveal" id="home">
+        <header class="workspace-header" id="home">
           <div class="crumb">Workspace / Portfolio / ${profile.role}</div>
           <div class="header-actions">
             <a class="chip magnetic" href="${profile.github}" target="_blank" rel="noreferrer">GitHub</a>
