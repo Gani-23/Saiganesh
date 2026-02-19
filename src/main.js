@@ -60,14 +60,23 @@ const render = () => {
 
     <div class="shell">
       <aside class="side-rail">
-        <button class="side-rail__logo side-rail__logo--toggle magnetic" data-theme-toggle type="button">
-          <span>SG</span>
-          <span class="side-rail__mode" id="railThemeMode">LT</span>
-        </button>
-        <a href="#home" class="side-rail__link">Home</a>
-        <a href="#experience" class="side-rail__link">Experience</a>
-        <a href="#github" class="side-rail__link">GitHub</a>
-        <a href="#contact" class="side-rail__link">Contact</a>
+        <div class="side-rail__top">
+          <button class="side-rail__logo side-rail__logo--toggle magnetic" data-theme-toggle type="button">
+            <span>SG</span>
+            <span class="side-rail__mode" id="railThemeMode">LT</span>
+          </button>
+          <button class="side-rail__menu-btn" id="navMenuToggle" type="button" aria-label="Toggle navigation menu" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+        </div>
+        <nav class="side-rail__nav" id="sideRailNav">
+          <a href="#home" class="side-rail__link">Home</a>
+          <a href="#experience" class="side-rail__link">Experience</a>
+          <a href="#github" class="side-rail__link">GitHub</a>
+          <a href="#contact" class="side-rail__link">Contact</a>
+        </nav>
       </aside>
 
       <main class="workspace">
@@ -75,7 +84,6 @@ const render = () => {
           <div class="crumb">Workspace / Portfolio / ${profile.role}</div>
           <div class="header-actions">
             <a class="chip magnetic" href="${profile.github}" target="_blank" rel="noreferrer">GitHub</a>
-            <a class="chip magnetic" href="${profile.website}" target="_blank" rel="noreferrer">Website</a>
             <a class="chip magnetic" href="${profile.resume}" target="_blank" rel="noreferrer">Resume PDF</a>
           </div>
         </header>
@@ -249,6 +257,8 @@ render()
 
 const THEME_STORAGE_KEY = 'saiganesh-theme'
 const VIEWPORT_PROFILES = ['compact', 'comfortable', 'short', 'tv', 'ultrawide']
+const FAVICON_LIGHT_PATH = '/icons/favicon-lt.svg'
+const FAVICON_DARK_PATH = '/icons/favicon-dk.svg'
 
 const normalizeViewportProfile = (profile) =>
   VIEWPORT_PROFILES.includes(profile) ? profile : 'comfortable'
@@ -343,10 +353,19 @@ const animateThemeTransition = () => {
   }
 }
 
+const updateFavicon = (theme) => {
+  const favicon = document.querySelector('#siteFavicon')
+  if (!favicon) return
+  const nextHref = theme === 'dark' ? FAVICON_DARK_PATH : FAVICON_LIGHT_PATH
+  if (favicon.getAttribute('href') === nextHref) return
+  favicon.setAttribute('href', nextHref)
+}
+
 const applyTheme = (theme, options = {}) => {
   const { animate = true } = options
   const normalizedTheme = theme === 'dark' ? 'dark' : 'light'
   document.documentElement.setAttribute('data-theme', normalizedTheme)
+  updateFavicon(normalizedTheme)
 
   const themeToggles = document.querySelectorAll('[data-theme-toggle]')
   const railThemeMode = document.querySelector('#railThemeMode')
@@ -1277,6 +1296,38 @@ const initMagnetic = () => {
   })
 }
 
+const initMobileNav = () => {
+  const rail = document.querySelector('.side-rail')
+  const navToggle = document.querySelector('#navMenuToggle')
+  const navLinks = document.querySelectorAll('.side-rail__nav .side-rail__link')
+  if (!rail || !navToggle || !navLinks.length) return
+
+  const closeMenu = () => {
+    rail.classList.remove('side-rail--open')
+    navToggle.setAttribute('aria-expanded', 'false')
+  }
+
+  navToggle.addEventListener('click', () => {
+    const nextOpen = !rail.classList.contains('side-rail--open')
+    rail.classList.toggle('side-rail--open', nextOpen)
+    navToggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false')
+  })
+
+  navLinks.forEach((link) => {
+    link.addEventListener('click', () => {
+      if (window.matchMedia('(max-width: 980px)').matches) closeMenu()
+    })
+  })
+
+  window.addEventListener(
+    'resize',
+    () => {
+      if (!window.matchMedia('(max-width: 980px)').matches) closeMenu()
+    },
+    { passive: true },
+  )
+}
+
 const initScrollAnimation = () => {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reduceMotion) return
@@ -1326,6 +1377,7 @@ const initScrollAnimation = () => {
 const init = async () => {
   initViewportProfile()
   initTheme()
+  initMobileNav()
   init3DStage()
   initPixelLab()
   initMagnetic()
