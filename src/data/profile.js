@@ -7,7 +7,7 @@ export const profile = {
   email: 'saiganesh7989@gmail.com',
   phone: '+91 9182345999',
   github: 'https://github.com/Gani-23',
-  website: 'https://saiganesh-angadi.vercel.app',
+  website: 'https://saiganesh-eta.vercel.app',
   resume: '/docs/Saiganesh_Angadi.pdf',
   summary:
     'DevOps engineer with full ownership of multi-cloud infrastructure across AWS and Azure, production Kubernetes operations, GitOps, CI/CD automation, and observability. Also experienced with React and full-stack delivery for faster product shipping.',
