@@ -8,6 +8,43 @@ import { profile, fallbackRepos } from './data/profile.js'
 gsap.registerPlugin(ScrollTrigger)
 
 const app = document.querySelector('#app')
+const DEMO_LICENSE_STORAGE_KEY = 'sg-demo-license-v1'
+const OTP_CHALLENGE_STORAGE_KEY = 'sg-otp-challenge-v1'
+const OTP_WINDOW_MS = 10 * 60 * 1000
+const DEMO_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+const SECRET_ROUTE = [51, 118, 99, 49, 55, 99, 115, 48, 48, 54].map((code) => String.fromCharCode(code)).join('')
+
+const getRouteToken = () => {
+  const hashRoute = (window.location.hash || '')
+    .replace(/^#/, '')
+    .split('?')[0]
+    .replace(/^\/+/, '')
+  const pathRoute = (window.location.pathname || '').replace(/^\/+/, '')
+  return hashRoute || pathRoute
+}
+
+const isProtocolRoute = () => getRouteToken() === SECRET_ROUTE
+
+const parseStoredJson = (raw) => {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+const getStoredDemoLicense = () => {
+  const license = parseStoredJson(localStorage.getItem(DEMO_LICENSE_STORAGE_KEY))
+  if (!license?.expiresAt) return null
+  if (Number(license.expiresAt) <= Date.now()) {
+    localStorage.removeItem(DEMO_LICENSE_STORAGE_KEY)
+    return null
+  }
+  return license
+}
+
+const getRemainingDays = (expiresAt) => Math.max(1, Math.ceil((Number(expiresAt) - Date.now()) / 86400000))
 
 const getSkillTone = (skill) => {
   const token = skill.toLowerCase()
@@ -46,6 +83,8 @@ const skillGroupMeta = {
 }
 
 const render = () => {
+  const activeDemoLicense = getStoredDemoLicense()
+  const demoDaysLeft = activeDemoLicense ? getRemainingDays(activeDemoLicense.expiresAt) : 0
   const groupedSkills = skillGroups
     .map((group) => ({
       ...group,
@@ -83,6 +122,11 @@ const render = () => {
         <header class="workspace-header" id="home">
           <div class="crumb">Workspace / Portfolio / ${profile.role}</div>
           <div class="header-actions">
+            ${
+              activeDemoLicense
+                ? `<span class="chip chip--demo" title="Pixel Lab Demo License active">${demoDaysLeft}D Demo</span>`
+                : ''
+            }
             <a class="chip magnetic" href="${profile.github}" target="_blank" rel="noreferrer">GitHub</a>
             <a class="chip magnetic" href="${profile.resume}" target="_blank" rel="noreferrer">Resume PDF</a>
           </div>
@@ -253,7 +297,279 @@ const render = () => {
   `
 }
 
-render()
+const toShortId = (prefix = 'PX') => `${prefix}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`
+
+const fastHash = (input) => {
+  let hash = 2166136261
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.abs(hash >>> 0)
+}
+
+const getDeviceFingerprint = () => {
+  const width = window.screen?.width || 0
+  const height = window.screen?.height || 0
+  const depth = window.screen?.colorDepth || 0
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  return [navigator.userAgent, navigator.language, `${width}x${height}`, depth, tz].join('|')
+}
+
+const deriveOtpFromChallenge = (challenge) => {
+  const payload = `${challenge.slot}|${challenge.nonce}|${challenge.vector.join('.') }|${getDeviceFingerprint()}`
+  const hash = fastHash(payload).toString().padStart(10, '0')
+  return hash.slice(-6)
+}
+
+const getStoredChallenge = () => {
+  const challenge = parseStoredJson(sessionStorage.getItem(OTP_CHALLENGE_STORAGE_KEY))
+  if (!challenge?.expiresAt || Number(challenge.expiresAt) <= Date.now()) {
+    sessionStorage.removeItem(OTP_CHALLENGE_STORAGE_KEY)
+    return null
+  }
+  return challenge
+}
+
+const setStoredChallenge = (challenge) => {
+  sessionStorage.setItem(OTP_CHALLENGE_STORAGE_KEY, JSON.stringify(challenge))
+}
+
+const clearStoredChallenge = () => {
+  sessionStorage.removeItem(OTP_CHALLENGE_STORAGE_KEY)
+}
+
+const formatMsClock = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const minutes = String(Math.floor(total / 60)).padStart(2, '0')
+  const seconds = String(total % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
+}
+
+const createHandshakeChallenge = () => {
+  const slot = Math.floor(Date.now() / 12000)
+  const nonce = Math.random().toString(36).slice(2, 11)
+  const seed = fastHash(`${slot}|${nonce}|${performance.now().toFixed(0)}`)
+  const vector = Array.from({ length: 4 }, (_, index) => ((seed >> (index * 6)) & 63) + 11)
+  const challenge = {
+    challengeId: toShortId('HS'),
+    slot,
+    nonce,
+    vector,
+    otp: '',
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + OTP_WINDOW_MS,
+  }
+  challenge.otp = deriveOtpFromChallenge(challenge)
+  return challenge
+}
+
+const renderProtocolLab = () => {
+  const activeLicense = getStoredDemoLicense()
+  const licenseMarkup = activeLicense
+    ? `
+      <div class="protocol-license protocol-license--active">
+        <h3>Demo License Active</h3>
+        <p>ID: <code>${activeLicense.licenseId}</code></p>
+        <p>Mode: ${activeLicense.mode}</p>
+        <p>Expires in: <strong>${getRemainingDays(activeLicense.expiresAt)} day(s)</strong></p>
+        <label class="protocol-label" for="demoTokenOutput">Demo Token</label>
+        <textarea class="protocol-token" id="demoTokenOutput" readonly>${activeLicense.licenseToken || ''}</textarea>
+        <div class="protocol-actions">
+          <button class="btn btn--ghost protocol-mini" id="copyDemoToken" type="button">Copy Token</button>
+        </div>
+      </div>
+    `
+    : `
+      <div class="protocol-license">
+        <h3>No Demo License Yet</h3>
+        <p>Complete a handshake scan and verify OTP to mint a 30-day demo pass.</p>
+      </div>
+    `
+
+  app.innerHTML = `
+    <section class="protocol-shell">
+      <div class="protocol-head">
+        <p class="protocol-tag">Pixel Lab Protocol</p>
+        <h1>Moving Handshake Gateway</h1>
+        <p class="protocol-sub">Secret route challenge for demo-only licensing. This never grants admin access.</p>
+      </div>
+
+      <div class="protocol-grid">
+        <article class="protocol-card">
+          <h2>Handshake Beacon</h2>
+          <p class="protocol-muted">Beacon values mutate every few seconds to mimic moving-target handshakes.</p>
+          <div class="protocol-beacon">
+            <div><span>Slot</span><strong id="beaconSlot">-</strong></div>
+            <div><span>Vector</span><strong id="beaconVector">-</strong></div>
+            <div><span>Pulse</span><strong id="beaconPulse">-</strong></div>
+          </div>
+          <button class="btn btn--primary protocol-btn" id="scanHandshake" type="button">Scan Handshake</button>
+        </article>
+
+        <article class="protocol-card">
+          <h2>OTP Relay</h2>
+          <p class="protocol-muted">Scan returns a one-time OTP valid for 10 minutes.</p>
+          <div class="protocol-otp-box">
+            <span>Scanned OTP</span>
+            <code id="scannedOtp">------</code>
+            <small id="otpTimer">Window: --:--</small>
+          </div>
+          <label class="protocol-label" for="otpInput">Enter OTP to unlock 30-day demo</label>
+          <input class="protocol-input" id="otpInput" placeholder="6-digit OTP" maxlength="6" />
+          <button class="btn btn--ghost protocol-btn" id="verifyOtp" type="button">Activate Demo License</button>
+          <p id="protocolStatus" class="protocol-status">Awaiting handshake scan.</p>
+        </article>
+      </div>
+
+      <div class="protocol-grid">
+        ${licenseMarkup}
+        <article class="protocol-license">
+          <h3>Route Signature</h3>
+          <p>Use hash route:</p>
+          <code>/#/${SECRET_ROUTE}</code>
+          <div class="protocol-actions">
+            <button class="btn btn--ghost protocol-mini" id="revokeDemo" type="button">Revoke Demo</button>
+            <a class="btn btn--ghost protocol-mini" href="/">Return Portfolio</a>
+          </div>
+        </article>
+      </div>
+    </section>
+  `
+}
+
+const initProtocolLab = () => {
+  const slotElement = document.querySelector('#beaconSlot')
+  const vectorElement = document.querySelector('#beaconVector')
+  const pulseElement = document.querySelector('#beaconPulse')
+  const scanButton = document.querySelector('#scanHandshake')
+  const scannedOtpElement = document.querySelector('#scannedOtp')
+  const otpTimerElement = document.querySelector('#otpTimer')
+  const otpInput = document.querySelector('#otpInput')
+  const verifyButton = document.querySelector('#verifyOtp')
+  const statusElement = document.querySelector('#protocolStatus')
+  const revokeButton = document.querySelector('#revokeDemo')
+  const copyTokenButton = document.querySelector('#copyDemoToken')
+  const demoTokenOutput = document.querySelector('#demoTokenOutput')
+
+  if (!slotElement || !vectorElement || !pulseElement || !scanButton || !otpInput || !verifyButton || !statusElement) return
+
+  let activeChallenge = getStoredChallenge()
+
+  const renderChallenge = () => {
+    if (!activeChallenge) {
+      scannedOtpElement.textContent = '------'
+      otpTimerElement.textContent = 'Window: --:--'
+      return
+    }
+    scannedOtpElement.textContent = activeChallenge.otp
+    otpTimerElement.textContent = `Window: ${formatMsClock(activeChallenge.expiresAt - Date.now())}`
+  }
+
+  const pushStatus = (text, tone = 'neutral') => {
+    statusElement.textContent = text
+    statusElement.dataset.tone = tone
+  }
+
+  const updateBeacon = () => {
+    const slot = Math.floor(Date.now() / 5000)
+    const pulse = fastHash(`${slot}|${navigator.hardwareConcurrency || 4}`).toString(16).slice(0, 6).toUpperCase()
+    const vector = Array.from({ length: 3 }, (_, i) => ((slot * (i + 3) + fastHash(location.host)) % 64) + 12)
+    slotElement.textContent = `S-${slot.toString(36).toUpperCase()}`
+    vectorElement.textContent = vector.join(' : ')
+    pulseElement.textContent = pulse
+  }
+
+  const tickChallenge = () => {
+    if (activeChallenge && activeChallenge.expiresAt <= Date.now()) {
+      activeChallenge = null
+      clearStoredChallenge()
+      pushStatus('OTP window expired. Scan handshake again.', 'warn')
+    }
+    renderChallenge()
+  }
+
+  scanButton.addEventListener('click', () => {
+    scanButton.disabled = true
+    pushStatus('Scanning voxel beacon...', 'neutral')
+    setTimeout(() => {
+      activeChallenge = createHandshakeChallenge()
+      setStoredChallenge(activeChallenge)
+      renderChallenge()
+      pushStatus(`Handshake locked: ${activeChallenge.challengeId}. OTP generated.`, 'ok')
+      scanButton.disabled = false
+    }, 700)
+  })
+
+  verifyButton.addEventListener('click', () => {
+    if (!activeChallenge) {
+      pushStatus('No active OTP. Scan handshake first.', 'warn')
+      return
+    }
+    if (activeChallenge.expiresAt <= Date.now()) {
+      activeChallenge = null
+      clearStoredChallenge()
+      renderChallenge()
+      pushStatus('OTP expired. Scan handshake again.', 'warn')
+      return
+    }
+
+    const candidateOtp = otpInput.value.trim()
+    if (candidateOtp !== activeChallenge.otp) {
+      pushStatus('OTP mismatch. Re-scan handshake.', 'error')
+      return
+    }
+
+    const license = {
+      licenseId: toShortId('DEMO'),
+      mode: 'PIXEL_LAB_DEMO',
+      route: SECRET_ROUTE,
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + DEMO_WINDOW_MS,
+      challengeId: activeChallenge.challengeId,
+    }
+    license.licenseToken = btoa(
+      JSON.stringify({
+        id: license.licenseId,
+        mode: license.mode,
+        exp: license.expiresAt,
+        proof: fastHash(`${license.licenseId}|${license.challengeId}|${SECRET_ROUTE}`).toString(16),
+      }),
+    )
+    localStorage.setItem(DEMO_LICENSE_STORAGE_KEY, JSON.stringify(license))
+    clearStoredChallenge()
+    activeChallenge = null
+    renderChallenge()
+    otpInput.value = ''
+    pushStatus(`Demo license active for 30 days. ID: ${license.licenseId}`, 'ok')
+    setTimeout(() => window.location.reload(), 320)
+  })
+
+  revokeButton?.addEventListener('click', () => {
+    localStorage.removeItem(DEMO_LICENSE_STORAGE_KEY)
+    clearStoredChallenge()
+    activeChallenge = null
+    renderChallenge()
+    pushStatus('Demo license revoked for this browser.', 'warn')
+    setTimeout(() => window.location.reload(), 280)
+  })
+
+  copyTokenButton?.addEventListener('click', async () => {
+    const value = demoTokenOutput?.value?.trim()
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      pushStatus('Demo token copied to clipboard.', 'ok')
+    } catch {
+      pushStatus('Unable to copy token. Copy manually from the text box.', 'warn')
+    }
+  })
+
+  updateBeacon()
+  renderChallenge()
+  setInterval(updateBeacon, 2200)
+  setInterval(tickChallenge, 1000)
+}
 
 const THEME_STORAGE_KEY = 'saiganesh-theme'
 const VIEWPORT_PROFILES = ['compact', 'comfortable', 'short', 'tv', 'ultrawide']
@@ -1390,4 +1706,15 @@ const init = async () => {
   }
 }
 
-init()
+const boot = async () => {
+  if (isProtocolRoute()) {
+    renderProtocolLab()
+    initProtocolLab()
+    return
+  }
+
+  render()
+  await init()
+}
+
+boot()
