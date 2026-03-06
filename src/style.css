@@ -1293,6 +1293,12 @@ h3 {
   color: #ff9e9e;
 }
 
+.protocol-separator {
+  border: 0;
+  border-top: 1px solid #3e5569;
+  margin: 0.18rem 0;
+}
+
 .protocol-license p {
   margin: 0;
   color: #c2d2de;

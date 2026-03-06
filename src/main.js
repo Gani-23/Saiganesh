@@ -9,9 +9,12 @@ gsap.registerPlugin(ScrollTrigger)
 
 const app = document.querySelector('#app')
 const DEMO_LICENSE_STORAGE_KEY = 'sg-demo-license-v1'
+const REAL_LICENSE_STORAGE_KEY = 'sg-real-license-v1'
+const REDEEM_CONFIG_STORAGE_KEY = 'sg-redeem-config-v1'
 const OTP_CHALLENGE_STORAGE_KEY = 'sg-otp-challenge-v1'
 const OTP_WINDOW_MS = 10 * 60 * 1000
 const DEMO_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+const DEFAULT_REDEEM_API_URL = 'https://oauth4-0.onrender.com'
 const SECRET_ROUTE = [51, 118, 99, 49, 55, 99, 115, 48, 48, 54].map((code) => String.fromCharCode(code)).join('')
 
 const getRouteToken = () => {
@@ -42,6 +45,32 @@ const getStoredDemoLicense = () => {
     return null
   }
   return license
+}
+
+const getStoredRealLicense = () => {
+  const license = parseStoredJson(localStorage.getItem(REAL_LICENSE_STORAGE_KEY))
+  if (!license?.licenseToken) return null
+  if (license.expiresAt && Number(new Date(license.expiresAt).getTime()) <= Date.now()) {
+    localStorage.removeItem(REAL_LICENSE_STORAGE_KEY)
+    return null
+  }
+  return license
+}
+
+const getStoredRedeemConfig = () => {
+  const config = parseStoredJson(localStorage.getItem(REDEEM_CONFIG_STORAGE_KEY)) || {}
+  return {
+    apiUrl: String(config.apiUrl || DEFAULT_REDEEM_API_URL).trim(),
+    email: String(config.email || '').trim(),
+    loginAppId: String(config.loginAppId || 'agentbuddy').trim().toLowerCase(),
+  }
+}
+
+const normalizeBaseUrl = (value) => {
+  let normalized = String(value || '').trim()
+  if (!normalized) return ''
+  if (!/^https?:\/\//i.test(normalized)) normalized = `https://${normalized}`
+  return normalized.replace(/\/+$/, '')
 }
 
 const getRemainingDays = (expiresAt) => Math.max(1, Math.ceil((Number(expiresAt) - Date.now()) / 86400000))
@@ -366,6 +395,7 @@ const createHandshakeChallenge = () => {
 
 const renderProtocolLab = () => {
   const activeLicense = getStoredDemoLicense()
+  const activeRealLicense = getStoredRealLicense()
   const licenseMarkup = activeLicense
     ? `
       <div class="protocol-license protocol-license--active">
@@ -377,6 +407,26 @@ const renderProtocolLab = () => {
         <textarea class="protocol-token" id="demoTokenOutput" readonly>${activeLicense.licenseToken || ''}</textarea>
         <div class="protocol-actions">
           <button class="btn btn--ghost protocol-mini" id="copyDemoToken" type="button">Copy Token</button>
+        </div>
+        <hr class="protocol-separator" />
+        <h3>Redeem to Real App License</h3>
+        <p class="protocol-muted">No shell needed. Login and redeem directly from Pixel Lab.</p>
+        <label class="protocol-label" for="redeemApiUrl">Auth API URL</label>
+        <input class="protocol-input" id="redeemApiUrl" placeholder="https://oauth4-0.onrender.com" />
+        <label class="protocol-label" for="redeemEmail">Login Email</label>
+        <input class="protocol-input" id="redeemEmail" placeholder="your@email.com" />
+        <label class="protocol-label" for="redeemPassword">Login Password</label>
+        <input class="protocol-input" id="redeemPassword" type="password" placeholder="password" />
+        <label class="protocol-label" for="redeemLoginAppId">Login App ID</label>
+        <input class="protocol-input" id="redeemLoginAppId" placeholder="agentbuddy" />
+        <div class="protocol-actions">
+          <button class="btn btn--primary protocol-mini" id="redeemRealLicense" type="button">Login + Redeem 30-day License</button>
+        </div>
+        <p id="redeemStatus" class="protocol-status">Ready to redeem.</p>
+        <label class="protocol-label" for="realLicenseOutput">Real License JWT</label>
+        <textarea class="protocol-token" id="realLicenseOutput" readonly>${activeRealLicense?.licenseToken || ''}</textarea>
+        <div class="protocol-actions">
+          <button class="btn btn--ghost protocol-mini" id="copyRealLicense" type="button">Copy Real License</button>
         </div>
       </div>
     `
@@ -451,10 +501,22 @@ const initProtocolLab = () => {
   const revokeButton = document.querySelector('#revokeDemo')
   const copyTokenButton = document.querySelector('#copyDemoToken')
   const demoTokenOutput = document.querySelector('#demoTokenOutput')
+  const redeemApiUrlInput = document.querySelector('#redeemApiUrl')
+  const redeemEmailInput = document.querySelector('#redeemEmail')
+  const redeemPasswordInput = document.querySelector('#redeemPassword')
+  const redeemLoginAppIdInput = document.querySelector('#redeemLoginAppId')
+  const redeemRealLicenseButton = document.querySelector('#redeemRealLicense')
+  const redeemStatusElement = document.querySelector('#redeemStatus')
+  const realLicenseOutput = document.querySelector('#realLicenseOutput')
+  const copyRealLicenseButton = document.querySelector('#copyRealLicense')
+  const redeemConfig = getStoredRedeemConfig()
 
   if (!slotElement || !vectorElement || !pulseElement || !scanButton || !otpInput || !verifyButton || !statusElement) return
 
   let activeChallenge = getStoredChallenge()
+  if (redeemApiUrlInput) redeemApiUrlInput.value = redeemConfig.apiUrl
+  if (redeemEmailInput) redeemEmailInput.value = redeemConfig.email
+  if (redeemLoginAppIdInput) redeemLoginAppIdInput.value = redeemConfig.loginAppId
 
   const renderChallenge = () => {
     if (!activeChallenge) {
@@ -469,6 +531,12 @@ const initProtocolLab = () => {
   const pushStatus = (text, tone = 'neutral') => {
     statusElement.textContent = text
     statusElement.dataset.tone = tone
+  }
+
+  const pushRedeemStatus = (text, tone = 'neutral') => {
+    if (!redeemStatusElement) return
+    redeemStatusElement.textContent = text
+    redeemStatusElement.dataset.tone = tone
   }
 
   const updateBeacon = () => {
@@ -562,6 +630,107 @@ const initProtocolLab = () => {
       pushStatus('Demo token copied to clipboard.', 'ok')
     } catch {
       pushStatus('Unable to copy token. Copy manually from the text box.', 'warn')
+    }
+  })
+
+  copyRealLicenseButton?.addEventListener('click', async () => {
+    const value = realLicenseOutput?.value?.trim()
+    if (!value) {
+      pushRedeemStatus('No real license token to copy yet.', 'warn')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(value)
+      pushRedeemStatus('Real license token copied to clipboard.', 'ok')
+    } catch {
+      pushRedeemStatus('Unable to copy real token. Copy manually from the text box.', 'warn')
+    }
+  })
+
+  redeemRealLicenseButton?.addEventListener('click', async () => {
+    const activeDemoLicense = getStoredDemoLicense()
+    const redeemCode = activeDemoLicense?.licenseToken || demoTokenOutput?.value?.trim()
+    if (!redeemCode) {
+      pushRedeemStatus('Activate demo license first, then redeem.', 'warn')
+      return
+    }
+
+    const apiUrl = normalizeBaseUrl(redeemApiUrlInput?.value || DEFAULT_REDEEM_API_URL)
+    const email = String(redeemEmailInput?.value || '').trim()
+    const password = String(redeemPasswordInput?.value || '').trim()
+    const loginAppId = String(redeemLoginAppIdInput?.value || '').trim().toLowerCase()
+
+    if (!apiUrl) {
+      pushRedeemStatus('Enter a valid Auth API URL.', 'warn')
+      return
+    }
+    if (!email || !password || !loginAppId) {
+      pushRedeemStatus('Email, password, and login appId are required.', 'warn')
+      return
+    }
+
+    redeemRealLicenseButton.disabled = true
+    pushRedeemStatus('Logging in...', 'neutral')
+
+    try {
+      localStorage.setItem(REDEEM_CONFIG_STORAGE_KEY, JSON.stringify({
+        apiUrl,
+        email,
+        loginAppId,
+      }))
+
+      const loginResponse = await fetch(`${apiUrl}/api/users/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          appId: loginAppId,
+        }),
+      })
+      const loginBody = await loginResponse.json().catch(() => ({}))
+      if (!loginResponse.ok || !loginBody?.accessToken) {
+        pushRedeemStatus(loginBody?.message || 'Login failed. Check credentials/app access.', 'error')
+        return
+      }
+
+      pushRedeemStatus('Redeeming 30-day license...', 'neutral')
+      const redeemResponse = await fetch(`${apiUrl}/api/users/licenses/redeem`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${loginBody.accessToken}`,
+        },
+        body: JSON.stringify({
+          redeemCode,
+          scope: 'all',
+          source: 'portfolio_pixel_lab',
+        }),
+      })
+      const redeemBody = await redeemResponse.json().catch(() => ({}))
+      if (!redeemResponse.ok || !redeemBody?.licenseToken) {
+        pushRedeemStatus(redeemBody?.message || 'Redeem failed.', 'error')
+        return
+      }
+
+      const realLicense = {
+        licenseToken: String(redeemBody.licenseToken).trim(),
+        expiresAt: redeemBody.expiresAt || '',
+        apps: Array.isArray(redeemBody.apps) ? redeemBody.apps : [],
+        source: redeemBody.source || 'portfolio_pixel_lab',
+        issuedAt: Date.now(),
+      }
+      localStorage.setItem(REAL_LICENSE_STORAGE_KEY, JSON.stringify(realLicense))
+      if (realLicenseOutput) realLicenseOutput.value = realLicense.licenseToken
+      if (redeemPasswordInput) redeemPasswordInput.value = ''
+
+      const appCount = realLicense.apps.length
+      const expiresLabel = realLicense.expiresAt ? new Date(realLicense.expiresAt).toLocaleString() : 'unknown'
+      pushRedeemStatus(`Redeemed: ${appCount} app(s), expires ${expiresLabel}.`, 'ok')
+    } catch (error) {
+      pushRedeemStatus('Network/CORS error while redeeming. Check API URL and backend CORS_ORIGINS.', 'error')
+    } finally {
+      redeemRealLicenseButton.disabled = false
     }
   })
 
