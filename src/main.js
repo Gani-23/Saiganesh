@@ -419,7 +419,12 @@ const renderProtocolLab = () => {
         <input class="protocol-input" id="redeemPassword" type="password" placeholder="password" />
         <label class="protocol-label" for="redeemLoginAppId">Login App ID</label>
         <input class="protocol-input" id="redeemLoginAppId" placeholder="agentbuddy" />
+        <label class="protocol-label" for="registerName">Register Name</label>
+        <input class="protocol-input" id="registerName" placeholder="Your full name" />
+        <label class="protocol-label" for="registerUsername">Register Username</label>
+        <input class="protocol-input" id="registerUsername" placeholder="unique username" />
         <div class="protocol-actions">
+          <button class="btn btn--ghost protocol-mini" id="registerOneAuth" type="button">Register to One Auth</button>
           <button class="btn btn--primary protocol-mini" id="redeemRealLicense" type="button">Login + Redeem 30-day License</button>
         </div>
         <p id="redeemStatus" class="protocol-status">Ready to redeem.</p>
@@ -505,6 +510,9 @@ const initProtocolLab = () => {
   const redeemEmailInput = document.querySelector('#redeemEmail')
   const redeemPasswordInput = document.querySelector('#redeemPassword')
   const redeemLoginAppIdInput = document.querySelector('#redeemLoginAppId')
+  const registerNameInput = document.querySelector('#registerName')
+  const registerUsernameInput = document.querySelector('#registerUsername')
+  const registerOneAuthButton = document.querySelector('#registerOneAuth')
   const redeemRealLicenseButton = document.querySelector('#redeemRealLicense')
   const redeemStatusElement = document.querySelector('#redeemStatus')
   const realLicenseOutput = document.querySelector('#realLicenseOutput')
@@ -517,6 +525,9 @@ const initProtocolLab = () => {
   if (redeemApiUrlInput) redeemApiUrlInput.value = redeemConfig.apiUrl
   if (redeemEmailInput) redeemEmailInput.value = redeemConfig.email
   if (redeemLoginAppIdInput) redeemLoginAppIdInput.value = redeemConfig.loginAppId
+  if (registerUsernameInput && redeemConfig.email && !registerUsernameInput.value) {
+    registerUsernameInput.value = redeemConfig.email.split('@')[0] || ''
+  }
 
   const renderChallenge = () => {
     if (!activeChallenge) {
@@ -644,6 +655,60 @@ const initProtocolLab = () => {
       pushRedeemStatus('Real license token copied to clipboard.', 'ok')
     } catch {
       pushRedeemStatus('Unable to copy real token. Copy manually from the text box.', 'warn')
+    }
+  })
+
+  registerOneAuthButton?.addEventListener('click', async () => {
+    const apiUrl = normalizeBaseUrl(redeemApiUrlInput?.value || DEFAULT_REDEEM_API_URL)
+    const email = String(redeemEmailInput?.value || '').trim().toLowerCase()
+    const password = String(redeemPasswordInput?.value || '').trim()
+    const loginAppId = String(redeemLoginAppIdInput?.value || '').trim().toLowerCase()
+    const name = String(registerNameInput?.value || '').trim()
+    const username = String(registerUsernameInput?.value || '').trim().toLowerCase()
+
+    if (!apiUrl) {
+      pushRedeemStatus('Enter a valid Auth API URL.', 'warn')
+      return
+    }
+
+    if (!name || !username || !email || !password || !loginAppId) {
+      pushRedeemStatus('Name, username, email, password, and appId are required for registration.', 'warn')
+      return
+    }
+
+    registerOneAuthButton.disabled = true
+    pushRedeemStatus('Creating One Auth account...', 'neutral')
+
+    try {
+      localStorage.setItem(REDEEM_CONFIG_STORAGE_KEY, JSON.stringify({
+        apiUrl,
+        email,
+        loginAppId,
+      }))
+
+      const registerResponse = await fetch(`${apiUrl}/api/users/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          username,
+          email,
+          password,
+          apps: [loginAppId],
+        }),
+      })
+
+      const registerBody = await registerResponse.json().catch(() => ({}))
+      if (!registerResponse.ok) {
+        pushRedeemStatus(registerBody?.message || 'Registration failed.', 'error')
+        return
+      }
+
+      pushRedeemStatus('Registration successful. Now click Login + Redeem 30-day License.', 'ok')
+    } catch (error) {
+      pushRedeemStatus('Network/CORS error during registration. Check API URL and backend CORS_ORIGINS.', 'error')
+    } finally {
+      registerOneAuthButton.disabled = false
     }
   })
 
